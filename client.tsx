@@ -1,22 +1,36 @@
-import { HttpLink, InMemoryCache, ApolloClient } from '@apollo/client';
-import { getMainDefinition } from '@apollo/client/utilities';
-import { ApolloLink, concat, split } from 'apollo-link';
-import { WebSocketLink } from 'apollo-link-ws';
-import fetch from 'node-fetch';
-import path from 'path';
-import Debug from 'debug';
+import {
+  HttpLink,
+  InMemoryCache,
+  ApolloClient as BaseApolloClient,
+} from "@apollo/client";
+import { getMainDefinition } from "@apollo/client/utilities";
+import { ApolloLink, concat, split } from "apollo-link";
+import { WebSocketLink } from "apollo-link-ws";
+import fetch from "node-fetch";
+import path from "path";
+import Debug from "debug";
 
-const debug = Debug('hasura:client');
+const debug = Debug("hasura:client");
 
 let ws;
-if (typeof(window) !== 'object') {
-  ws = require('ws');
+if (typeof window !== "object") {
+  ws = require("ws");
 }
 
-const DEEP_FOUNDATION_HASURA_RELATIVE: boolean | undefined = ((r) => r ? !!+r : undefined)(process.env.DEEP_FOUNDATION_HASURA_RELATIVE);
-const NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE: boolean | undefined = ((r) => r ? !!+r : undefined)(process.env.NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE);
+const DEEP_FOUNDATION_HASURA_RELATIVE: boolean | undefined = ((r) =>
+  r ? !!+r : undefined)(process.env.DEEP_FOUNDATION_HASURA_RELATIVE);
+const NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE: boolean | undefined = ((
+  r,
+) => (r ? !!+r : undefined))(
+  process.env.NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE,
+);
 
-const ENV_RELATIVE = typeof(DEEP_FOUNDATION_HASURA_RELATIVE) === 'boolean' ? DEEP_FOUNDATION_HASURA_RELATIVE : typeof(NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE) === 'boolean' ? NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE : undefined;
+const ENV_RELATIVE =
+  typeof DEEP_FOUNDATION_HASURA_RELATIVE === "boolean"
+    ? DEEP_FOUNDATION_HASURA_RELATIVE
+    : typeof NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE === "boolean"
+    ? NEXT_PUBLIC_DEEP_FOUNDATION_HASURA_RELATIVE
+    : undefined;
 export interface IApolloClientGeneratorOptions {
   initialStore?: any;
   token?: string;
@@ -29,21 +43,29 @@ export interface IApolloClientGeneratorOptions {
   relative?: boolean;
 }
 
+export type ApolloClient = BaseApolloClient<any> & {
+  path: string;
+  ssl: boolean;
+  jwt_token: string;
+};
+
 export function generateHeaders(options: IApolloClientGeneratorOptions) {
-  const headers: IApolloClientGeneratorOptions['headers'] = { ...options.headers };
+  const headers: IApolloClientGeneratorOptions["headers"] = {
+    ...options.headers,
+  };
   if (options.token) headers.Authorization = `Bearer ${options.token}`;
-  if (options.secret) headers['x-hasura-admin-secret'] = options.secret;
-  if (options.client) headers['x-hasura-client'] = options.client;
+  if (options.secret) headers["x-hasura-admin-secret"] = options.secret;
+  if (options.client) headers["x-hasura-client"] = options.client;
   return headers;
 }
 
-export interface IApolloClient<T> extends ApolloClient<T> {
+export interface IApolloClient<T> extends ApolloClient {
   jwt_token?: string;
   path?: string;
   ssl?: boolean;
 }
 
-const host = typeof(window) === 'object' ? window.location.host : '';
+const host = typeof window === "object" ? window.location.host : "";
 
 export function generateApolloClient(
   options: IApolloClientGeneratorOptions,
@@ -51,14 +73,21 @@ export function generateApolloClient(
     ApolloClient?: any;
     InMemoryCache?: any;
   },
-): ApolloClient<any> {
-  debug('generateApolloClient', options, forwardingArguments);
+): ApolloClient {
+  debug("generateApolloClient", options, forwardingArguments);
 
-  const isRelative = typeof(options?.relative) === 'boolean' ? options.relative : typeof(ENV_RELATIVE) === 'boolean' ? ENV_RELATIVE : false;
+  const isRelative =
+    typeof options?.relative === "boolean"
+      ? options.relative
+      : typeof ENV_RELATIVE === "boolean"
+      ? ENV_RELATIVE
+      : false;
   const headers = generateHeaders(options);
 
   const httpLink = new HttpLink({
-    uri: `${isRelative ? '' : `http${options.ssl ? 's' : ''}:/`}${path.normalize('/' + (options.path || ''))}`,
+    uri: `${
+      isRelative ? "" : `http${options.ssl ? "s" : ""}:/`
+    }${path.normalize("/" + (options.path || ""))}`,
     // @ts-ignore
     fetch,
     headers,
@@ -66,16 +95,22 @@ export function generateApolloClient(
 
   const wsLink = options.ws
     ? new WebSocketLink({
-      uri: `${isRelative ? (host ? `ws${options.ssl ? 's' : ''}://${host}` : '') : `ws${options.ssl ? 's' : ''}:/`}${path.normalize('/' + (options.path || ''))}`,
-      options: {
-        lazy: true,
-        reconnect: true,
-        connectionParams: () => ({
-          headers,
-        }),
-      },
-      webSocketImpl: ws,
-    })
+        uri: `${
+          isRelative
+            ? host
+              ? `ws${options.ssl ? "s" : ""}://${host}`
+              : ""
+            : `ws${options.ssl ? "s" : ""}:/`
+        }${path.normalize("/" + (options.path || ""))}`,
+        options: {
+          lazy: true,
+          reconnect: true,
+          connectionParams: () => ({
+            headers,
+          }),
+        },
+        webSocketImpl: ws,
+      })
     : null;
 
   const authMiddleware = new ApolloLink((operation, forward) => {
@@ -93,14 +128,17 @@ export function generateApolloClient(
           // return true;
           // if you need ws only for subscriptions:
           const def = getMainDefinition(query);
-          return def?.kind === 'OperationDefinition' && def?.operation === 'subscription';
+          return (
+            def?.kind === "OperationDefinition" &&
+            def?.operation === "subscription"
+          );
         },
         wsLink,
         // @ts-ignore
         httpLink,
       );
 
-  const client: IApolloClient<any> = new ApolloClient({
+  const client: IApolloClient<any> = new BaseApolloClient({
     ssrMode: true,
     // @ts-ignore
     link: concat(authMiddleware, link),
@@ -113,12 +151,12 @@ export function generateApolloClient(
     ...forwardingArguments?.ApolloClient,
     defaultOptions: {
       watchQuery: {
-        fetchPolicy: 'no-cache',
+        fetchPolicy: "no-cache",
         // errorPolicy: 'ignore',
         ...forwardingArguments?.ApolloClient?.defaultOptions?.watchQuery,
       },
       query: {
-        fetchPolicy: 'no-cache',
+        fetchPolicy: "no-cache",
         // errorPolicy: 'ignore',
         ...forwardingArguments?.ApolloClient?.defaultOptions?.query,
       },
